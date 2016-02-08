@@ -1,24 +1,53 @@
+#Uncomment the line below to automatically load code after building
+#import bootloadercmd as b
 
-env = Environment(PIC = '24FJ128GB206', 
-                  CC = 'pic30-gcc', 
-                  PROGSUFFIX = '.cof', 
-                  CFLAGS = '-g -omf=coff -x c -mcpu=$PIC', 
-                  LINKFLAGS = '-omf=coff -mcpu=$PIC -Wl,--script="app_p24FJ128GB206.gld"', 
-                  CPPPATH = '../lib')
-env.PrependENVPath('PATH', '/Applications/microchip/mplabc30/v3.30c/bin')
-bin2hex = Builder(action = 'pic30-bin2hex $SOURCE -omf=coff',
-                  suffix = 'hex', 
-                  src_suffix = 'cof')
+
+env = Environment(PIC = '24FJ128GB206',
+                  CC = 'xc16-gcc',
+                  PROGSUFFIX = '.elf',
+                  CFLAGS = '-g -omf=elf -x c -mcpu=$PIC',
+                  LINKFLAGS = '-omf=elf -mcpu=$PIC -Wl,--script="app_p24FJ128GB206.gld"',
+                  CPPPATH = './lib')
+#Path for OSX
+#env.PrependENVPath('PATH', '/Applications/microchip/xc16/v1.23/bin')
+#Path for Linux
+env.PrependENVPath('PATH', '/opt/microchip/xc16/v1.25/bin')
+bin2hex = Builder(action = 'xc16-bin2hex $SOURCE -omf=elf',
+                  suffix = 'hex',
+                  src_suffix = 'elf')
 env.Append(BUILDERS = {'Hex' : bin2hex})
-list = Builder(action = 'pic30-objdump -S -D $SOURCE > $TARGET', 
-               suffix = 'lst', 
-               src_suffix = 'cof')
+list = Builder(action = 'xc16-objdump -S -D $SOURCE > $TARGET',
+               suffix = 'lst',
+               src_suffix = 'elf')
 env.Append(BUILDERS = {'List' : list})
 
-env.Program('hellousb', ['hellousb.c',
-                         'descriptors.c', 
-                         'usb.c', 
-                         '../lib/pin.c', 
-                         '../lib/uart.c'])
-env.Hex('hellousb')
-env.List('hellousb')
+env.Program('haptiphone', ['haptiphone.c',
+						'descriptors.c',
+						'usb.c',
+                        './lib/ui.c',
+						'./lib/timer.c',
+						'./lib/oc.c',
+                        './lib/pin.c',
+                        './lib/spi.c',
+                        './lib/common.c'])
+
+#print('Creating builder to load hex file via bootloader...')
+#def load_function(target, source, env):
+#    bl = b.bootloadercmd()
+#    bl.import_hex(source[0].rstr())
+#    bl.write_device()
+#    bl.bootloader.start_user()
+#    bl.bootloader.close()
+#    return None
+#
+#load = Builder(action=load_function,
+#               suffix = 'none',
+#               src_suffix = 'hex')
+#
+#env.Append(BUILDERS = {'Load' : load})
+
+env.Hex('haptiphone')
+env.List('haptiphone')
+# To automatically load the hex file, you need to run scons like this:
+# >scons --site-dir ../site_scons
+#env.Load('haptiphone') #Uncomment this line to automatically load the hex file
