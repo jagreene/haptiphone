@@ -1,6 +1,6 @@
 #Uncomment the line below to automatically load code after building
 #import bootloadercmd as b
-
+import sys
 
 env = Environment(PIC = '24FJ128GB206',
                   CC = 'xc16-gcc',
@@ -9,9 +9,12 @@ env = Environment(PIC = '24FJ128GB206',
                   LINKFLAGS = '-omf=elf -mcpu=$PIC -Wl,--script="app_p24FJ128GB206.gld"',
                   CPPPATH = './lib')
 #Path for OSX
-#env.PrependENVPath('PATH', '/Applications/microchip/xc16/v1.23/bin')
+if sys.platform == 'darwin':
+   env.PrependENVPath('PATH', '/Applications/microchip/xc16/v1.25/bin')
 #Path for Linux
-env.PrependENVPath('PATH', '/opt/microchip/xc16/v1.25/bin')
+elif sys.platform == 'linux2' or 'linux':
+   env.PrependENVPath('PATH', '/opt/microchip/xc16/v1.25/bin')
+
 bin2hex = Builder(action = 'xc16-bin2hex $SOURCE -omf=elf',
                   suffix = 'hex',
                   src_suffix = 'elf')
@@ -22,15 +25,15 @@ list = Builder(action = 'xc16-objdump -S -D $SOURCE > $TARGET',
 env.Append(BUILDERS = {'List' : list})
 
 env.Program('haptiphone', ['haptiphone.c',
-						'descriptors.c',
-						'usb.c',
-						'./lib/node.c',
-                        './lib/ui.c',
-						'./lib/timer.c',
-						'./lib/oc.c',
-                        './lib/pin.c',
-                        './lib/spi.c',
-                        './lib/common.c'])
+			   'descriptors.c',
+			    'usb.c',
+			    './lib/node.c',
+                            './lib/ui.c',
+			    './lib/timer.c',
+			    './lib/oc.c',
+                            './lib/pin.c',
+                            './lib/spi.c',
+                            './lib/common.c'])
 
 #print('Creating builder to load hex file via bootloader...')
 #def load_function(target, source, env):

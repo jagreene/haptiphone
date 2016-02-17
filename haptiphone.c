@@ -7,6 +7,7 @@
 #include "pin.h"
 #include "spi.h"
 #include "oc.h"
+#include "math.h"
 #include "node.h"
 
 #define TOGGLE_LED1         1
@@ -33,12 +34,19 @@
 // Typically between 1-20kHz based on Aaron Hoover.  Value in Hz
 #define MOTOR_FREQ          10e3
 
+#define ENC_PER_HALF_DEGREE 91
+
+#define SPRING_FLAG         0x8
+#define DAMPENER_FLAG       0x4
+#define WALL_FLAG           0x2
+#define TEXTURE_FLAG        0x1
+
+BYTE FEEDBACK_FLAGS;
+
 _PIN *ENC_SCK, *ENC_MISO, *ENC_MOSI;
 _PIN *ENC_NCS;
 
 _PIN *OC_PIN_1, *OC_PIN_2;
-
-char FEEDBACK_FLAGS;
 
 WORD enc_readReg(WORD address) {
     WORD cmd, result;
@@ -169,6 +177,22 @@ void VendorRequestsIn(void) {
     }
 }
 
+// TODO: Implement this function.
+int16_t get_velocity(){
+    return 0;
+}
+
+uint16_t enc_half_degrees(){
+    WORD address = (WORD)0x3FFF;
+    WORD result = enc_readReg(address);
+
+    // 14 bits divided by 360 degrees * 2
+    // uint encRead_per_halfDegree = 91;
+
+    uint16_t enc_x4 = (result.b[1] << 10) + (result.b[0] << 2);
+    return enc_x4 / ENC_PER_HALF_DEGREE;
+}
+
 void VendorRequestsOut(void) {
 //    WORD32 address;
 //
@@ -179,6 +203,88 @@ void VendorRequestsOut(void) {
 //        default:
 //            USB_error_flags |= 0x01;                    // set Request Error Flag
 //    }
+}
+
+int16_t wall(uint16_t half_degrees){
+    // Half degrees
+    uint16_t left_min_angle = 50; // End of wall
+    uint16_t right_max_angle = 670; // End of wall
+
+    uint16_t left_max_angle = left_min_angle + 16; // Start of wall
+    uint16_t right_min_angle = right_max_angle - 16; // Start of wall
+    if(half_degrees < left_min_angle){
+        return 0x7fff; // Set max speed positive direction 0111 1111 1111 1111
+    }
+    if(half_degrees < left_max_angle){
+        //  Must be positive, so at most 2**14
+        return (1 << (left_max_angle - half_degrees)); // Hacky exponential.  Doubles for each half degree step
+    }
+    if(half_degrees > right_max_angle){
+        return 0x8000; // Set max speed negative direction 1000 0000
+    }
+    if(half_degrees > right_min_angle){
+        return -1 * (1 << (half_degrees - right_min_angle));
+    }
+
+    return 0; // Not hitting wall, return 0
+}
+
+int16_t spring(uint16_t half_degrees){
+    uint16_t equilibrium = 360;
+    int16_t spring_constant = -10;
+
+    return spring_constant * (half_degrees - equilibrium);
+}
+
+int16_t damper(int16_t velocity){
+    int16_t damper_constant = -10;
+
+    return velocity * damper_constant;
+}
+
+// TODO: Some fancy texture thing goes here.  Probably a type of sinusoidal thing
+int16_t texture(uint16_t half_degrees, int16_t velocity){
+    return 0;
+}
+
+// Comprised of two walls
+// 1111 1111 1111 1110 denotes speed
+// 0000 0000 0000 0001 denotes direction 1 is negative, 0 positive
+
+void iteration(void){
+    uint16_t position = enc_half_degrees();
+    int16_t velocity = get_velocity();
+
+    int16_t feedback = 0;
+    if(FEEDBACK_FLAGS & SPRING_FLAG){
+        feedback += spring(position); 
+    }
+    if(FEEDBACK_FLAGS & DAMPENER_FLAG){
+        feedback += damper(velocity);
+    }
+    if(FEEDBACK_FLAGS & WALL_FLAG){
+        feedback += wall(position);
+    }
+    if(FEEDBACK_FLAGS & TEXTURE_FLAG){
+        int16_t texture_val = texture(position, velocity);
+        if(abs(texture_val) > abs(feedback)){
+            feedback = texture_val;
+        }
+        // feedback += texture(position, velocity);
+    }
+
+    //Set motor to feedback speed
+    if(feedback > 0){
+        feedback = feedback << 1;
+        oc_pwm(&oc1, OC_PIN_1, NULL, MOTOR_FREQ, feedback);
+        oc_pwm(&oc2, OC_PIN_2, NULL, MOTOR_FREQ,      0x0);
+    }
+
+    else{
+        feedback = (-1 * feedback) << 1;
+        oc_pwm(&oc1, OC_PIN_1, NULL, MOTOR_FREQ,      0x0);
+        oc_pwm(&oc2, OC_PIN_2, NULL, MOTOR_FREQ, feedback);
+    }
 }
 
 int16_t main(void) {
@@ -219,5 +325,6 @@ int16_t main(void) {
     }
     while (1) {
         ServiceUSB();                       // service any pending USB requests
+        iteration();
     }
 }
