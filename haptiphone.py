@@ -35,6 +35,7 @@ class haptiphone(Cmd):
         self.SET_MOTOR_BRAKE = 13
         self.SET_MOTOR_HALF = 14
         self.SET_CONTROLLERS = 15
+        self.SET_CONSTANTS = 16
 
     def do_close(self, *args):
         self.dev = None
@@ -131,6 +132,25 @@ class haptiphone(Cmd):
             print "Could not send ENC_ANGLE_AFTER_ZERO_POS_ADDER vendor request."
         else:
             print "Controllers Set!"
+
+    def do_set_constants(self, constant, *args):
+        input = args[0].split(' ')
+        controllers = 0b00000000;
+        if "spring" in input:
+            controllers |= 0b10001000;
+        if "dampen" in input:
+            controllers |= 0b01000100;
+        if "wall" in input:
+            controllers |= 0b00100010;
+        if "texture" in input:
+            controllers |= 0b00010001;
+        try:
+            ret = self.dev.ctrl_transfer(0xC0, self.SET_CONSTANTS, controllers)
+        except usb.core.USBError:
+            print "Could not send ENC_ANGLE_AFTER_ZERO_POS_ADDER vendor request."
+        else:
+            print "Controllers Set!"
+
     def do_mot_max(self, *args):
         try:
             ret = self.dev.ctrl_transfer(0x40, self.SET_MOTOR_MAX)

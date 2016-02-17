@@ -161,7 +161,9 @@ void VendorRequests(void) {
             break;
 
         case SET_CONTROLLERS:
-            FEEDBACK_FLAGS = USB_setup.wValue.w << 4;
+            // feedback byte is spring damper wall texture, duplicated for error control
+            // right shift to only get one copy of nibble
+            FEEDBACK_FLAGS = USB_setup.wValue.w >> 4;
             BD[EP0IN].bytecount = 0;         // set EP0 IN byte count to 0
             BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
             break;
@@ -290,6 +292,12 @@ int16_t main(void) {
     init_ui();
     init_pin();
     init_spi();
+    InitUSB();
+    // Turn on USB interupt
+    U1IE = 0xFF;
+    U1EIE = 0xFF;
+    IFS5bits.USB1IF = 0;
+    IEC5bits.USB1IE = 1;
 
     node* positions = init_list(10);
 
@@ -316,7 +324,6 @@ int16_t main(void) {
         ServiceUSB();                       // ...service USB requests
     }
     while (1) {
-        ServiceUSB();                       // service any pending USB requests
         positions = add_node(enc_half_degrees(), positions); // update position list
         iteration(positions);
     }
