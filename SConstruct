@@ -24,6 +24,7 @@ env.Append(BUILDERS = {'List' : list})
 env.Program('haptiphone', ['haptiphone.c',
 						'descriptors.c',
 						'usb.c',
+						'./lib/node.c',
                         './lib/ui.c',
 						'./lib/timer.c',
 						'./lib/oc.c',

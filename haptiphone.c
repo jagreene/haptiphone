@@ -7,6 +7,7 @@
 #include "pin.h"
 #include "spi.h"
 #include "oc.h"
+#include "node.h"
 
 #define TOGGLE_LED1         1
 #define TOGGLE_LED2         2
@@ -16,7 +17,7 @@
 
 #define ENC_READ_ANG        6
 
-#define TOGGLE_LED3         8 
+#define TOGGLE_LED3         8
 #define READ_SW2            9
 #define READ_SW3            10
 
@@ -24,6 +25,7 @@
 #define SET_MOTOR_COAST     12
 #define SET_MOTOR_BRAKE     13
 #define SET_MOTOR_HALF      14
+#define SET_CONTROLLERS      15
 
 #define REG_MAG_ADDR        0x3FFE
 #define REG_ANG_ADDR        0x3FFF
@@ -35,6 +37,8 @@ _PIN *ENC_SCK, *ENC_MISO, *ENC_MOSI;
 _PIN *ENC_NCS;
 
 _PIN *OC_PIN_1, *OC_PIN_2;
+
+char FEEDBACK_FLAGS;
 
 WORD enc_readReg(WORD address) {
     WORD cmd, result;
@@ -53,6 +57,10 @@ WORD enc_readReg(WORD address) {
     return result;
 }
 
+uint8_t motor_setSpeed() {
+
+
+}
 //void ClassRequests(void) {
 //    switch (USB_setup.bRequest) {
 //        default:
@@ -144,6 +152,11 @@ void VendorRequests(void) {
             BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
             break;
 
+        case SET_CONTROLLERS:
+            FEEDBACK_FLAGS = USB_setup.wValue.w << 4;
+            BD[EP0IN].bytecount = 0;         // set EP0 IN byte count to 0
+            BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
+            break;
         default:
             USB_error_flags |= 0x01;    // set Request Error Flag
     }
@@ -169,10 +182,18 @@ void VendorRequestsOut(void) {
 }
 
 int16_t main(void) {
+    WORD result;
+    uint16_t angle;
+    uint16_t mask;
+
     init_clock();
     init_ui();
     init_pin();
     init_spi();
+
+    node* P = init_list(10);
+    node* I = init_list(10);
+    node* D = init_list(10);
 
     ENC_MISO = &D[1];
     ENC_MOSI = &D[0];
