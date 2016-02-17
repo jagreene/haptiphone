@@ -26,7 +26,15 @@
 #define SET_MOTOR_COAST     12
 #define SET_MOTOR_BRAKE     13
 #define SET_MOTOR_HALF      14
-#define SET_CONTROLLERS      15
+#define SET_CONTROLLERS     15
+
+// SET values for feedback constants
+#define SET_WALL_LEFT           16
+#define SET_WALL_RIGHT          17
+#define SET_SPRING_EQUILIBRIUM  18
+#define SET_SPRING_CONSTANT     19
+#define SET_DAMPER_CONSTANT     20
+#define SET_TEXTURE_CONSTANT    21
 
 #define REG_MAG_ADDR        0x3FFE
 #define REG_ANG_ADDR        0x3FFF
@@ -40,6 +48,14 @@
 #define DAMPENER_FLAG       0x4
 #define WALL_FLAG           0x2
 #define TEXTURE_FLAG        0x1
+
+
+// Feedback loop constants
+uint16_t wall_edge_left, wall_edge_right, 
+    spring_equilibrium, spring_constant,
+    damper_constant,
+    texture_constant;
+
 
 BYTE FEEDBACK_FLAGS;
 
@@ -167,6 +183,37 @@ void VendorRequests(void) {
             BD[EP0IN].bytecount = 0;         // set EP0 IN byte count to 0
             BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
             break;
+
+        case SET_WALL_LEFT:
+            wall_edge_left = USB_setup.wValue.w;
+            BD[EP0IN].bytecount = 0;         // set EP0 IN byte count to 0
+            BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
+            break;
+        case SET_WALL_RIGHT:
+            wall_edge_right = USB_setup.wValue.w;
+            BD[EP0IN].bytecount = 0;         // set EP0 IN byte count to 0
+            BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
+            break;
+        case SET_SPRING_EQUILIBRIUM:
+            spring_equilibrium = USB.setup.wValue.w;
+            BD[EP0IN].bytecount = 0;         // set EP0 IN byte count to 0
+            BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
+            break;
+        case SET_SPRING_CONSTANT:
+            spring_constant = USB.setup.wValue.w;
+            BD[EP0IN].bytecount = 0;         // set EP0 IN byte count to 0
+            BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
+            break;
+        case SET_DAMPER_CONSTANT:
+            damper_constant = USB.setup.wValue.w;
+            BD[EP0IN].bytecount = 0;         // set EP0 IN byte count to 0
+            BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
+            break;
+        case SET_TEXTURE_CONSTANT:
+            texture_constant = USB.setup.wValue.w;
+            BD[EP0IN].bytecount = 0;         // set EP0 IN byte count to 0
+            BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
+            break;
         default:
             USB_error_flags |= 0x01;    // set Request Error Flag
     }
@@ -204,43 +251,44 @@ void VendorRequestsOut(void) {
 
 int16_t wall(uint16_t half_degrees){
     // Half degrees
-    uint16_t left_min_angle = 50; // End of wall
-    uint16_t right_max_angle = 670; // End of wall
+    // uint16_t wall_edge_left = 50; // End of wall
+    // uint16_t wall_edge_right = 670; // End of wall
 
-    uint16_t left_max_angle = left_min_angle + 16; // Start of wall
-    uint16_t right_min_angle = right_max_angle - 16; // Start of wall
-    if(half_degrees < left_min_angle){
+    uint16_t wall_begin_left = wall_edge_left + 16; // Start of wall
+    uint16_t wall_begin_right = wall_edge_right - 16; // Start of wall
+    if(half_degrees < wall_edge_left){
         return 0x7fff; // Set max speed positive direction 0111 1111 1111 1111
     }
-    if(half_degrees < left_max_angle){
+    if(half_degrees < wall_begin_left){
         //  Must be positive, so at most 2**14
-        return (1 << (left_max_angle - half_degrees)); // Hacky exponential.  Doubles for each half degree step
+        return (1 << (wall_begin_left - half_degrees)); // Hacky exponential.  Doubles for each half degree step
     }
-    if(half_degrees > right_max_angle){
+    if(half_degrees > wall_edge_right){
         return 0x8000; // Set max speed negative direction 1000 0000
     }
-    if(half_degrees > right_min_angle){
-        return -1 * (1 << (half_degrees - right_min_angle));
+    if(half_degrees > wall_begin_right){
+        return -1 * (1 << (half_degrees - wall_begin_right));
     }
 
     return 0; // Not hitting wall, return 0
 }
 
 int16_t spring(uint16_t half_degrees){
-    uint16_t equilibrium = 360;
-    int16_t spring_constant = -10;
+    // uint16_t spring_equilibrium = 360;
+    // uint16_t spring_constant = 10;
 
-    return spring_constant * (half_degrees - equilibrium);
+    // Negative sign accounted for in order of subtraction
+    return spring_constant * (spring_equilibrium - half_degrees);
 }
 
 int16_t damper(int16_t velocity){
-    int16_t damper_constant = -10;
+    // int16_t damper_constant = -10;
 
     return velocity * damper_constant;
 }
 
 int16_t texture(uint16_t half_degrees){
-    int16_t texture_constant = -5;
+    // int16_t texture_constant = -5;
 
     // adjust frequency from 720 half degrees to 45 half degrees
     return texture_constant*sin(half_degrees*(720/45));
@@ -271,23 +319,21 @@ void iteration(node* positions){
         }
     }
 
-    //Set motor to feedback speed
+    //Set motor to feedback speed.  Reverse these as necessary.
     if(feedback > 0){
         feedback = feedback << 1;
-        oc_pwm(&oc1, OC_PIN_1, NULL, MOTOR_FREQ, feedback);
-        oc_pwm(&oc2, OC_PIN_2, NULL, MOTOR_FREQ,      0x0);
+        pin_write(OC_PIN_1, feedback);
+        pin_write(OC_PIN_2, 0);
     }
 
     else{
         feedback = (-1 * feedback) << 1;
-        oc_pwm(&oc1, OC_PIN_1, NULL, MOTOR_FREQ,      0x0);
-        oc_pwm(&oc2, OC_PIN_2, NULL, MOTOR_FREQ, feedback);
+        pin_write(OC_PIN_1, 0);
+        pin_write(OC_PIN_2, feedback);
     }
 }
 
-int16_t main(void) {
-    WORD result;
-
+void init_main(void){
     init_clock();
     init_ui();
     init_pin();
@@ -317,7 +363,19 @@ int16_t main(void) {
     // Set the two driving pins
     OC_PIN_1 = &D[7];
     OC_PIN_2 = &D[8];
+    oc_pwm(&oc1, OC_PIN_1, NULL, MOTOR_FREQ, 0x0);
+    oc_pwm(&oc2, OC_PIN_2, NULL, MOTOR_FREQ, 0x0);
 
+    wall_edge_left = 50;
+    wall_edge_right 670;
+    spring_equilibrium = 360; 
+    spring_constant = 10;
+    damper_constant = -10;
+    texture_constant = -5;
+}
+
+int16_t main(void) {
+    WORD result;
 
     InitUSB();                              // initialize the USB registers and serial interface engine
     while (USB_USWSTAT!=CONFIG_STATE) {     // while the peripheral is not configured...

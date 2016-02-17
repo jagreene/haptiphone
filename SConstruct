@@ -26,14 +26,14 @@ env.Append(BUILDERS = {'List' : list})
 
 env.Program('haptiphone', ['haptiphone.c',
 			   'descriptors.c',
-			    'usb.c',
-			    './lib/node.c',
-                            './lib/ui.c',
-			    './lib/timer.c',
-			    './lib/oc.c',
-                            './lib/pin.c',
-                            './lib/spi.c',
-                            './lib/common.c'])
+            './lib/usb.c',
+            './lib/node.c',
+            './lib/ui.c',
+            './lib/timer.c',
+            './lib/oc.c',
+            './lib/pin.c',
+            './lib/spi.c',
+            './lib/common.c'])
 
 #print('Creating builder to load hex file via bootloader...')
 #def load_function(target, source, env):
