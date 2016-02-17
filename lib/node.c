@@ -35,13 +35,15 @@ node* add_node(uint8_t val, node* head){
 	return head;
 };
 
-node* add_deriv(node* phead, node* dhead){
-	uint8_t val = phead->val - phead->next->val;
-	return add_node(val, dhead);
-};
+node* get_avg_diff(node* head){
+    int16_t total = 0;
+    int count = 0;
+    node* curr = head;
 
-node* add_int(node* phead, node* ihead){
-	uint8_t val = phead->val + ihead->val;
-	return add_node(val, ihead);
-};
-
+    while (!curr->isTerminal){
+        count++;
+        total += curr->next->val - curr->val;
+        curr = curr->next;
+    }
+    return total/count;
+}

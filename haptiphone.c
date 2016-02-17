@@ -177,11 +177,6 @@ void VendorRequestsIn(void) {
     }
 }
 
-// TODO: Implement this function.
-int16_t get_velocity(){
-    return 0;
-}
-
 uint16_t enc_half_degrees(){
     WORD address = (WORD)0x3FFF;
     WORD result = enc_readReg(address);
@@ -242,35 +237,36 @@ int16_t damper(int16_t velocity){
     return velocity * damper_constant;
 }
 
-// TODO: Some fancy texture thing goes here.  Probably a type of sinusoidal thing
-int16_t texture(uint16_t half_degrees, int16_t velocity){
-    return 0;
+int16_t texture(uint16_t half_degrees){
+    int16_t texture_constant = -5;
+
+    // adjust frequency from 720 half degrees to 45 half degrees
+    return texture_constant*sin(half_degrees*(720/45));
 }
 
 // Comprised of two walls
 // 1111 1111 1111 1110 denotes speed
 // 0000 0000 0000 0001 denotes direction 1 is negative, 0 positive
 
-void iteration(void){
-    uint16_t position = enc_half_degrees();
-    int16_t velocity = get_velocity();
+void iteration(node* positions){
+    int16_t velocity = get_avg_diff(positions);
+    uint16_t position = positions->val;
 
     int16_t feedback = 0;
     if(FEEDBACK_FLAGS & SPRING_FLAG){
-        feedback += spring(position); 
+        feedback += spring(position);
     }
     if(FEEDBACK_FLAGS & DAMPENER_FLAG){
         feedback += damper(velocity);
     }
-    if(FEEDBACK_FLAGS & WALL_FLAG){
-        feedback += wall(position);
-    }
     if(FEEDBACK_FLAGS & TEXTURE_FLAG){
-        int16_t texture_val = texture(position, velocity);
-        if(abs(texture_val) > abs(feedback)){
-            feedback = texture_val;
+        feedback += texture(position);
+    }
+    if(FEEDBACK_FLAGS & WALL_FLAG){
+        int16_t wall_val = wall(position);
+        if(abs(wall_val) > abs(feedback)){
+            feedback = wall_val;
         }
-        // feedback += texture(position, velocity);
     }
 
     //Set motor to feedback speed
@@ -289,17 +285,13 @@ void iteration(void){
 
 int16_t main(void) {
     WORD result;
-    uint16_t angle;
-    uint16_t mask;
 
     init_clock();
     init_ui();
     init_pin();
     init_spi();
 
-    node* P = init_list(10);
-    node* I = init_list(10);
-    node* D = init_list(10);
+    node* positions = init_list(10);
 
     ENC_MISO = &D[1];
     ENC_MOSI = &D[0];
@@ -325,6 +317,7 @@ int16_t main(void) {
     }
     while (1) {
         ServiceUSB();                       // service any pending USB requests
-        iteration();
+        positions = add_node(enc_half_degrees(), positions); // update position list
+        iteration(positions);
     }
 }
