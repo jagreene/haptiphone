@@ -30,3 +30,7 @@
 
 # Debug files
 *.dSYM/
+
+# Created files
+*.dblite
+*.lst
