@@ -33,11 +33,18 @@ class haptiphone(Cmd):
         self.ENC_ANGLE_AFTER_ZERO_POS_ADDER = 0x3FFF
         self.SET_MOTOR_MAX = 11
         self.SET_MOTOR_COAST = 12
-        self.SET_MOTOR_VAR = 13
-        self.SET_MOTOR_BRAKE = 14
-        self.SET_MOTOR_HALF = 15
-        self.SET_CONTROLLERS = 16
-        self.SET_CONSTANTS = 17
+
+        self.SET_MOTOR_BRAKE = 13
+        self.SET_MOTOR_HALF = 14
+        self.SET_CONTROLLERS = 15
+        # self.SET_CONSTANTS = 16
+        self.SET_WALL_LEFT = 16
+        self.SET_WALL_LEFT = 16
+        self.SET_WALL_RIGHT = 17
+        self.SET_SPRING_ = 18
+        self.SET_SPRING_CONSTANT = 19
+        self.SET_DAMPER_CONSTANT = 20
+        self.SET_TEXTURE_CONSTANT = 21
 
     def do_close(self, *args):
         self.dev = None
