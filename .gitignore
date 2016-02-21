@@ -34,3 +34,6 @@
 # Created files
 *.dblite
 *.lst
+
+# OSX stupid files
+*.DS_Store
