@@ -2,6 +2,7 @@ from cmd2 import Cmd
 from matplotlib import pyplot as plt
 import usb.core
 import time
+import math
 
 class haptiphone(Cmd):
 
@@ -32,10 +33,11 @@ class haptiphone(Cmd):
         self.ENC_ANGLE_AFTER_ZERO_POS_ADDER = 0x3FFF
         self.SET_MOTOR_MAX = 11
         self.SET_MOTOR_COAST = 12
-        self.SET_MOTOR_BRAKE = 13
-        self.SET_MOTOR_HALF = 14
-        self.SET_CONTROLLERS = 15
-        self.SET_CONSTANTS = 16
+        self.SET_MOTOR_VAR = 13
+        self.SET_MOTOR_BRAKE = 14
+        self.SET_MOTOR_HALF = 15
+        self.SET_CONTROLLERS = 16
+        self.SET_CONSTANTS = 17
 
     def do_close(self, *args):
         self.dev = None
@@ -91,17 +93,16 @@ class haptiphone(Cmd):
     def do_read_sw3(self, *args):
         print self.read_sw3();
 
-    def read_reg(self, *args):
+    def read_reg(self, address):
         try:
-            address = args[0];
             ret = self.dev.ctrl_transfer(0xC0, self.ENC_READ_REG, address, 0, 2)
         except usb.core.USBError:
             print "Could not send ENC_READ_REG vendor request."
         else:
             return ret
 
-    def do_read_reg(self, *args):
-        print self.read_reg();
+    def do_read_reg(self, reg):
+        print self.read_reg(int(reg));
 
     def read_ang(self, *args):
         try:
@@ -162,6 +163,14 @@ class haptiphone(Cmd):
             ret = self.dev.ctrl_transfer(0x40, self.SET_MOTOR_HALF)
         except usb.core.USBError:
             print "Could not send SET_MOTOR_HALF vendor request."
+
+    def do_mot_var(self, speed, *args):
+        speed = math.floor(float(speed)*(2**16))
+        print speed
+        try:
+            ret = self.dev.ctrl_transfer(0x40, self.SET_MOTOR_VAR, int(speed))
+        except usb.core.USBError:
+            print "Could not send SET_MOTOR_MAX vendor request."
 
     def do_mot_coast(self, *args):
         try:

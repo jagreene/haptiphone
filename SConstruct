@@ -33,6 +33,7 @@ env.Program('haptiphone', ['haptiphone.c',
 			    './lib/oc.c',
                             './lib/pin.c',
                             './lib/spi.c',
+                            './lib/uart.c',
                             './lib/common.c'])
 
 #print('Creating builder to load hex file via bootloader...')
@@ -54,4 +55,6 @@ env.Hex('haptiphone')
 env.List('haptiphone')
 # To automatically load the hex file, you need to run scons like this:
 # >scons --site-dir ../site_scons
+#d
+#c
 #env.Load('haptiphone') #Uncomment this line to automatically load the hex file

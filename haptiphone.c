@@ -1,5 +1,6 @@
 #include <p24FJ128GB206.h>
 #include <stdint.h>
+#include <stdio.h>
 #include "config.h"
 #include "common.h"
 #include "ui.h"
@@ -9,6 +10,7 @@
 #include "oc.h"
 #include "math.h"
 #include "node.h"
+#include "uart.h"
 
 #define TOGGLE_LED1         1
 #define TOGGLE_LED2         2
@@ -24,9 +26,10 @@
 
 #define SET_MOTOR_MAX       11
 #define SET_MOTOR_COAST     12
-#define SET_MOTOR_BRAKE     13
-#define SET_MOTOR_HALF      14
-#define SET_CONTROLLERS      15
+#define SET_MOTOR_VAR       13
+#define SET_MOTOR_BRAKE     14
+#define SET_MOTOR_HALF      15
+#define SET_CONTROLLERS     16
 
 #define REG_MAG_ADDR        0x3FFE
 #define REG_ANG_ADDR        0x3FFF
@@ -46,6 +49,7 @@ BYTE FEEDBACK_FLAGS;
 _PIN *ENC_SCK, *ENC_MISO, *ENC_MOSI;
 _PIN *ENC_NCS;
 
+// Set the two driving pins
 _PIN *OC_PIN_1, *OC_PIN_2;
 
 WORD enc_readReg(WORD address) {
@@ -65,10 +69,6 @@ WORD enc_readReg(WORD address) {
     return result;
 }
 
-uint8_t motor_setSpeed() {
-
-
-}
 //void ClassRequests(void) {
 //    switch (USB_setup.bRequest) {
 //        default:
@@ -118,44 +118,40 @@ void VendorRequests(void) {
             BD[EP0IN].bytecount = 1;         // set EP0 IN byte count to 1
             BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
             break;
-        // case ENC_READ_ANG:              // Basicalyl ENC_READ_REG but with angle address already set
-        //     result = enc_readReg(REG_ANG_ADDR);
-        //     BD[EP0IN].address[0] = result.b[0];
-        //     BD[EP0IN].address[1] = result.b[1];
-        //     BD[EP0IN].bytecount = 2;         // set EP0 IN byte count to 1
-        //     BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
-        //     break;
 
         // Forces motor to go to max speed by setting p1 to 1, p2 to 0 and the input oc to 0xffff (100% duty cycle)
         case SET_MOTOR_HALF:
-            // pin_write(&D[6], 0xffff);
-            // pin_write(&D[7], 0x0);
-            oc_pwm(&oc1, OC_PIN_1, NULL, MOTOR_FREQ, 0xa000);
-            oc_pwm(&oc2, OC_PIN_2, NULL, MOTOR_FREQ,    0x0);
+            pin_write(OC_PIN_1, 0xffff);
+            pin_write(OC_PIN_2, 0x0);
+            BD[EP0IN].bytecount = 0;         // set EP0 IN byte count to 0
+            BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
             break;
 
         case SET_MOTOR_MAX:
-            // pin_write(&D[6], 0xffff);
-            // pin_write(&D[7], 0x0);
-            oc_pwm(&oc1, OC_PIN_1, NULL, MOTOR_FREQ, 0xffff);
-            oc_pwm(&oc2, OC_PIN_2, NULL, MOTOR_FREQ,    0x0);
+            pin_write(OC_PIN_1, 0xffff);
+            pin_write(OC_PIN_2, 0x0);
+            BD[EP0IN].bytecount = 0;         // set EP0 IN byte count to 0
+            BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
             break;
 
         case SET_MOTOR_COAST:
-            // pin_write(&D[7], 0x0);
-            // pin_write(&D[8], 0x0);
-            oc_pwm(&oc1, OC_PIN_1, NULL, MOTOR_FREQ, 0x0);
-            oc_pwm(&oc2, OC_PIN_2, NULL, MOTOR_FREQ, 0x0);
+            pin_write(OC_PIN_1, 0x0);
+            pin_write(OC_PIN_2, 0x0);
+            BD[EP0IN].bytecount = 0;         // set EP0 IN byte count to 0
+            BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
+            break;
+
+        case SET_MOTOR_VAR:
+            pin_write(OC_PIN_1, (uint16_t)USB_setup.wValue.w);
+            pin_write(OC_PIN_2, 0x0);
             BD[EP0IN].bytecount = 0;         // set EP0 IN byte count to 0
             BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
             break;
 
         // Hard brake
         case SET_MOTOR_BRAKE:
-            // pin_write(&D[7], 0xffff);
-            // pin_write(&D[8], 0xffff);
-            oc_pwm(&oc1, OC_PIN_1, NULL, MOTOR_FREQ, 0xffff);
-            oc_pwm(&oc2, OC_PIN_2, NULL, MOTOR_FREQ, 0xffff);
+            pin_write(OC_PIN_1, 0xffff);
+            pin_write(OC_PIN_2, 0xffff);
             BD[EP0IN].bytecount = 0;         // set EP0 IN byte count to 0
             BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
             break;
@@ -240,19 +236,15 @@ int16_t damper(int16_t velocity){
 }
 
 int16_t texture(uint16_t half_degrees){
-    int16_t texture_constant = -5;
+    int16_t texture_constant = 20000;
 
-    // adjust frequency from 720 half degrees to 45 half degrees
-    return texture_constant*sin(half_degrees*(720/45));
+    // adjust frequency from 720 half degrees to 45 half degrees to radians
+    return (int16_t)(texture_constant*sin(half_degrees*(720.0/45.0/114.6)));
 }
 
-// Comprised of two walls
-// 1111 1111 1111 1110 denotes speed
-// 0000 0000 0000 0001 denotes direction 1 is negative, 0 positive
-
-void iteration(node* positions){
-    int16_t velocity = get_avg_diff(positions);
-    uint16_t position = positions->val;
+void iteration(){
+    int16_t velocity = 0; //get_avg_diff(positions);
+    uint16_t position = enc_half_degrees(); //positions->val;
 
     int16_t feedback = 0;
     if(FEEDBACK_FLAGS & SPRING_FLAG){
@@ -274,25 +266,24 @@ void iteration(node* positions){
     //Set motor to feedback speed
     if(feedback > 0){
         feedback = feedback << 1;
-        oc_pwm(&oc1, OC_PIN_1, NULL, MOTOR_FREQ, feedback);
-        oc_pwm(&oc2, OC_PIN_2, NULL, MOTOR_FREQ,      0x0);
+        pin_write(OC_PIN_1, (uint16_t)feedback);
+        pin_write(OC_PIN_2, 0x0);
     }
-
     else{
-        feedback = (-1 * feedback) << 1;
-        oc_pwm(&oc1, OC_PIN_1, NULL, MOTOR_FREQ,      0x0);
-        oc_pwm(&oc2, OC_PIN_2, NULL, MOTOR_FREQ, feedback);
+        feedback = (-1*feedback) << 1;
+        pin_write(OC_PIN_1, 0x0);
+        pin_write(OC_PIN_2, (uint16_t)feedback);//(uint16_t)feedback);
     }
 }
 
 int16_t main(void) {
-    WORD result;
-
     init_clock();
+    init_uart();
     init_ui();
     init_pin();
     init_spi();
     InitUSB();
+
     // Turn on USB interupt
     U1IE = 0xFF;
     U1EIE = 0xFF;
@@ -314,17 +305,15 @@ int16_t main(void) {
     // OC setup code
     init_oc();
 
-    // Set the two driving pins
     OC_PIN_1 = &D[7];
     OC_PIN_2 = &D[8];
 
+    oc_pwm(&oc1, OC_PIN_1, NULL, MOTOR_FREQ, 0xffff);
+    oc_pwm(&oc2, OC_PIN_2, NULL, MOTOR_FREQ, 0xffff);
 
-    InitUSB();                              // initialize the USB registers and serial interface engine
-    while (USB_USWSTAT!=CONFIG_STATE) {     // while the peripheral is not configured...
-        ServiceUSB();                       // ...service USB requests
-    }
+    FEEDBACK_FLAGS = 0x4;
     while (1) {
-        positions = add_node(enc_half_degrees(), positions); // update position list
-        iteration(positions);
+        //positions = add_node(enc_half_degrees(), positions); // update position list
+        iteration();
     }
 }
