@@ -32,12 +32,12 @@
 #define SET_CONTROLLERS     16
 
 // SET values for feedback constants
-#define SET_WALL_LEFT           16
-#define SET_WALL_RIGHT          17
-#define SET_SPRING_EQUILIBRIUM  18
-#define SET_SPRING_CONSTANT     19
-#define SET_DAMPER_CONSTANT     20
-#define SET_TEXTURE_CONSTANT    21
+#define SET_WALL_LEFT           17
+#define SET_WALL_RIGHT          18
+#define SET_SPRING_EQUILIBRIUM  19
+#define SET_SPRING_CONSTANT     20
+#define SET_DAMPER_CONSTANT     21
+#define SET_TEXTURE_CONSTANT    22
 
 #define REG_MAG_ADDR        0x3FFE
 #define REG_ANG_ADDR        0x3FFF
@@ -92,9 +92,22 @@ WORD enc_readReg(WORD address) {
 //    }
 //}
 
+uint16_t enc_half_degrees(){
+    WORD address = (WORD)0x3FFF;
+    WORD result = enc_readReg(address);
+
+    // 14 bits divided by 360 degrees * 2
+    // uint encRead_per_halfDegree = 91;
+
+    uint16_t enc_x4 = (result.b[1] << 10) + (result.b[0] << 2);
+    return enc_x4 / ENC_PER_HALF_DEGREE;
+}
+
 void VendorRequests(void) {
     WORD32 address;
     WORD result;
+    uint16_t half_degrees;
+    uint8_t sig;
 
     switch (USB_setup.bRequest) {
         case TOGGLE_LED1:
@@ -118,6 +131,14 @@ void VendorRequests(void) {
             BD[EP0IN].address[1] = result.b[1];
             BD[EP0IN].bytecount = 2;         // set EP0 IN byte count to 1
             BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
+            break;
+        case ENC_READ_ANG:
+            half_degrees = enc_half_degrees();
+            half_degrees = half_degrees >> 8;
+            sig = (uint8_t)half_degrees;
+            BD[EP0IN].address[0] = sig;
+            BD[EP0IN].bytecount = 1;
+            BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit            
             break;
         case TOGGLE_LED3:
             led_toggle(&led3);
@@ -191,22 +212,22 @@ void VendorRequests(void) {
             BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
             break;
         case SET_SPRING_EQUILIBRIUM:
-            spring_equilibrium = USB.setup.wValue.w;
+            spring_equilibrium = USB_setup.wValue.w;
             BD[EP0IN].bytecount = 0;         // set EP0 IN byte count to 0
             BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
             break;
         case SET_SPRING_CONSTANT:
-            spring_constant = USB.setup.wValue.w;
+            spring_constant = USB_setup.wValue.w;
             BD[EP0IN].bytecount = 0;         // set EP0 IN byte count to 0
             BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
             break;
         case SET_DAMPER_CONSTANT:
-            damper_constant = USB.setup.wValue.w;
+            damper_constant = USB_setup.wValue.w;
             BD[EP0IN].bytecount = 0;         // set EP0 IN byte count to 0
             BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
             break;
         case SET_TEXTURE_CONSTANT:
-            texture_constant = USB.setup.wValue.w;
+            texture_constant = USB_setup.wValue.w;
             BD[EP0IN].bytecount = 0;         // set EP0 IN byte count to 0
             BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit
             break;
@@ -222,16 +243,6 @@ void VendorRequestsIn(void) {
     }
 }
 
-uint16_t enc_half_degrees(){
-    WORD address = (WORD)0x3FFF;
-    WORD result = enc_readReg(address);
-
-    // 14 bits divided by 360 degrees * 2
-    // uint encRead_per_halfDegree = 91;
-
-    uint16_t enc_x4 = (result.b[1] << 10) + (result.b[0] << 2);
-    return enc_x4 / ENC_PER_HALF_DEGREE;
-}
 
 void VendorRequestsOut(void) {
 //    WORD32 address;
@@ -253,17 +264,34 @@ int16_t wall(uint16_t half_degrees){
     uint16_t wall_begin_left = wall_edge_left + 16; // Start of wall
     uint16_t wall_begin_right = wall_edge_right - 16; // Start of wall
     if(half_degrees < wall_edge_left){
-        return 0x7fff; // Set max speed positive direction 0111 1111 1111 1111
+        led_write(&led1, true);
+        // led_write(&led2, false);
+        // led_write(&led3, false);
+        return 0x8001; // Set max speed positive direction 0111 1111 1111 1111
     }
-    if(half_degrees < wall_begin_left){
+    else if(half_degrees < wall_begin_left){
+        led_write(&led1, false);
+        // led_write(&led2, false);
+        // led_write(&led3, false);
         //  Must be positive, so at most 2**14
-        return (1 << (wall_begin_left - half_degrees)); // Hacky exponential.  Doubles for each half degree step
+        return -1 * (1 << (wall_begin_left - half_degrees)); // Hacky exponential.  Doubles for each half degree step
     }
-    if(half_degrees > wall_edge_right){
-        return 0x8000; // Set max speed negative direction 1000 0000
+    else if(half_degrees > wall_edge_right){
+        led_write(&led1, false);
+        // led_write(&led2, true);
+        // led_write(&led3, false);
+        return 0x7fff; // Set max speed negative direction 1000 0000
     }
-    if(half_degrees > wall_begin_right){
-        return -1 * (1 << (half_degrees - wall_begin_right));
+    else if(half_degrees > wall_begin_right){
+        led_write(&led1, false);
+        // led_write(&led2, false);
+        // led_write(&led3, false);
+        return (1 << (half_degrees - wall_begin_right));
+    }
+    else {
+        // led_write(&led1, false);
+        // led_write(&led2, false);
+        // led_write(&led3, true);
     }
 
     return 0; // Not hitting wall, return 0
@@ -274,7 +302,7 @@ int16_t spring(uint16_t half_degrees){
     // uint16_t spring_constant = 10;
 
     // Negative sign accounted for in order of subtraction
-    return spring_constant * (spring_equilibrium - half_degrees);
+    return spring_constant * (half_degrees - spring_equilibrium);
 }
 
 int16_t damper(int16_t velocity){
@@ -294,16 +322,20 @@ void iteration(){
     uint16_t position = enc_half_degrees(); //positions->val;
 
     int16_t feedback = 0;
-    if(FEEDBACK_FLAGS & SPRING_FLAG){
+    // led_write(&led2, true);
+    if((FEEDBACK_FLAGS & SPRING_FLAG) == SPRING_FLAG){
         feedback += spring(position);
     }
-    if(FEEDBACK_FLAGS & DAMPENER_FLAG){
+    if((FEEDBACK_FLAGS & DAMPENER_FLAG) == DAMPENER_FLAG){
         feedback += damper(velocity);
     }
-    if(FEEDBACK_FLAGS & TEXTURE_FLAG){
+    if((FEEDBACK_FLAGS & TEXTURE_FLAG) == TEXTURE_FLAG){
         feedback += texture(position);
     }
-    if(FEEDBACK_FLAGS & WALL_FLAG){
+    if((FEEDBACK_FLAGS & WALL_FLAG) == WALL_FLAG){
+        led_write(&led1, true);
+        // led_write(&led2, false);
+
         int16_t wall_val = wall(position);
         if(abs(wall_val) > abs(feedback)){
             feedback = wall_val;
@@ -313,11 +345,15 @@ void iteration(){
     //Set motor to feedback speed.  Reverse these as necessary.
     if(feedback > 0){
         feedback = feedback << 1;
+        led_write(&led1, true);
+        led_write(&led2, false);
         pin_write(OC_PIN_1, (uint16_t)feedback);
         pin_write(OC_PIN_2, 0x0);
     }
     else{
         feedback = (-1*feedback) << 1;
+        led_write(&led1, false);
+        led_write(&led2, true);
         pin_write(OC_PIN_1, 0x0);
         pin_write(OC_PIN_2, (uint16_t)feedback);//(uint16_t)feedback);
     }
@@ -325,17 +361,19 @@ void iteration(){
 
 int16_t main(void) {
     init_clock();
-    init_uart();
+    init_uart(); // Why is this erroring?
     init_ui();
     init_pin();
     init_spi();
     InitUSB();
+    init_oc();
 
+    int count = 0;
     // Turn on USB interupt
-    U1IE = 0xFF;
-    U1EIE = 0xFF;
-    IFS5bits.USB1IF = 0;
-    IEC5bits.USB1IE = 1;
+    // U1IE = 0xFF;
+    // U1EIE = 0xFF;
+    // IFS5bits.USB1IF = 0;
+    // IEC5bits.USB1IE = 1;
 
     node* positions = init_list(10);
 
@@ -350,26 +388,33 @@ int16_t main(void) {
     spi_open(&spi1, ENC_MISO, ENC_MOSI, ENC_SCK, 5e6, 1);
 
     // OC setup code
-    init_oc();
 
     OC_PIN_1 = &D[7];
     OC_PIN_2 = &D[8];
     oc_pwm(&oc1, OC_PIN_1, NULL, MOTOR_FREQ, 0x0);
     oc_pwm(&oc2, OC_PIN_2, NULL, MOTOR_FREQ, 0x0);
 
-    wall_edge_left = 50;
-    wall_edge_right 670;
-    spring_equilibrium = 360;
-    spring_constant = 10;
+    wall_edge_left = 100;
+    wall_edge_right = 620;
+    spring_equilibrium = wall_edge_right - 16;
+    // MAX difference = 500 degrees
+    // 2**13 * 3
+    spring_constant = 50;
     damper_constant = -10;
-    texture_constant = -5;
-}
+    texture_constant = 17000;
 
-    oc_pwm(&oc1, OC_PIN_1, NULL, MOTOR_FREQ, 0xffff);
-    oc_pwm(&oc2, OC_PIN_2, NULL, MOTOR_FREQ, 0xffff);
-    FEEDBACK_FLAGS = 0x4;
-    while (1) {
+
+    // oc_pwm(&oc1, OC_PIN_1, NULL, MOTOR_FREQ, 0xffff);
+    // oc_pwm(&oc2, OC_PIN_2, NULL, MOTOR_FREQ, 0xffff);
+    FEEDBACK_FLAGS = WALL_FLAG | SPRING_FLAG | TEXTURE_FLAG;
+    // led_write(&led2, true);
+    // led_write(&led3, true);
+    while (true) {
         //positions = add_node(enc_half_degrees(), positions); // update position list
+        count++;
+        if (count%1000 == 0){
+            led_toggle(&led3);
+        }
         iteration();
     }
 }
