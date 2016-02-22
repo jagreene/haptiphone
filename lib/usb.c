@@ -15,11 +15,6 @@ BYTE USB_device_status;
 BYTE USB_USTAT;
 BYTE USB_USWSTAT;
 
-// Puts ServiceUSB in the usbInterupt
-void __attribute__((interrupt, auto_psv)) _USB1Interrupt(void) {
-    ServiceUSB();
-}
-
 void InitUSB(void) {
     unsigned int *U1EP;
     BYTE n;

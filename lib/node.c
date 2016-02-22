@@ -11,22 +11,22 @@ node* new_node(uint8_t val, node* next){
 
 node* init_list(int length){
 	//make terminal node
-	node* new = (node*)malloc(sizeof(node));
-	new->val = 0;
-	new->isTerminal = true;
-	node* next = new;
+	node* tail = (node*)malloc(sizeof(node));
+	tail->val = 0;
+	tail->isTerminal = true;
+	node* head = tail;
 	//make the rest
 	int i = 0;
 	for(i=0; i<length-1; i++){
-		new = new_node(0, next);
-		next = new;
+		head = new_node(0, head);
 	}
-	return next;
+	return head;
 };
 
 node* add_node(uint8_t val, node* head){
 	head = new_node(val, head);
 	node* curr = head;
+        int count = 0
 	while (!curr->next->isTerminal){
 		curr = curr->next;
 	}

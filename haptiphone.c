@@ -1,5 +1,7 @@
 #include <p24FJ128GB206.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include "config.h"
 #include "common.h"
@@ -9,7 +11,6 @@
 #include "spi.h"
 #include "oc.h"
 #include "math.h"
-#include "node.h"
 #include "uart.h"
 
 #define TOGGLE_LED1         1
@@ -51,12 +52,12 @@
 #define DAMPENER_FLAG       0x4
 #define WALL_FLAG           0x2
 #define TEXTURE_FLAG        0x1
-
+#define POS_LENGTH          100
 
 // Feedback loop constants
 uint16_t wall_edge_left, wall_edge_right,
     spring_equilibrium, spring_constant,
-    damper_constant,
+    damper_constant, base_constant,
     texture_constant;
 
 
@@ -306,9 +307,7 @@ int16_t spring(uint16_t half_degrees){
 }
 
 int16_t damper(int16_t velocity){
-    // int16_t damper_constant = -10;
-
-    return velocity * damper_constant;
+    return velocity * -damper_constant;
 }
 
 int16_t texture(uint16_t half_degrees){
@@ -317,27 +316,51 @@ int16_t texture(uint16_t half_degrees){
     return (int16_t)(texture_constant*sin(half_degrees*(720.0/45.0/114.6)));
 }
 
-void iteration(){
-    int16_t velocity = 0; //get_avg_diff(positions);
-    uint16_t position = enc_half_degrees(); //positions->val;
+int16_t checkOverflow(int16_t feedback, int16_t factor){
+    int32_t check = feedback + factor;
+    if (check > 0x7fff){
+        feedback = 0x7fff;
+    } else if (check < -1*0x7fff) {
+        feedback = 0x8001;
+    } else{
+        feedback += factor;
+    }
 
+    return feedback;
+}
+
+void iteration(position, velocity){
+
+    int32_t check = 0;
     int16_t feedback = 0;
     // led_write(&led2, true);
     if((FEEDBACK_FLAGS & SPRING_FLAG) == SPRING_FLAG){
-        feedback += spring(position);
+        feedback = checkOverflow(feedback, spring(position));
     }
     if((FEEDBACK_FLAGS & DAMPENER_FLAG) == DAMPENER_FLAG){
-        feedback += damper(velocity);
+        feedback = checkOverflow(feedback, damper(velocity));
     }
     if((FEEDBACK_FLAGS & TEXTURE_FLAG) == TEXTURE_FLAG){
-        feedback += texture(position);
+        if (velocity > 0){
+            feedback = checkOverflow(feedback, texture(position));
+        } else {
+            feedback = checkOverflow(feedback, -1*texture(position));
+        }
+
     }
+
+    if (feedback > 0){
+        feedback =  checkOverflow(feedback, base_constant);
+    } else {
+        feedback = checkOverflow(feedback, -1*base_constant);
+    }
+
     if((FEEDBACK_FLAGS & WALL_FLAG) == WALL_FLAG){
         led_write(&led1, true);
         // led_write(&led2, false);
 
         int16_t wall_val = wall(position);
-        if(abs(wall_val) > abs(feedback)){
+        if(abs(wall_val) > abs(feedback)) {
             feedback = wall_val;
         }
     }
@@ -355,7 +378,7 @@ void iteration(){
         led_write(&led1, false);
         led_write(&led2, true);
         pin_write(OC_PIN_1, 0x0);
-        pin_write(OC_PIN_2, (uint16_t)feedback);//(uint16_t)feedback);
+        pin_write(OC_PIN_2, (uint16_t)feedback);;
     }
 }
 
@@ -369,13 +392,13 @@ int16_t main(void) {
     init_oc();
 
     int count = 0;
+    int blinkCount = 0;
     // Turn on USB interupt
     // U1IE = 0xFF;
     // U1EIE = 0xFF;
     // IFS5bits.USB1IF = 0;
     // IEC5bits.USB1IE = 1;
 
-    node* positions = init_list(10);
 
     ENC_MISO = &D[1];
     ENC_MOSI = &D[0];
@@ -394,27 +417,35 @@ int16_t main(void) {
     oc_pwm(&oc1, OC_PIN_1, NULL, MOTOR_FREQ, 0x0);
     oc_pwm(&oc2, OC_PIN_2, NULL, MOTOR_FREQ, 0x0);
 
+    uint16_t positions [POS_LENGTH];
+    uint16_t position = 0;
+    int16_t velocity = 0;
+
     wall_edge_left = 100;
     wall_edge_right = 620;
     spring_equilibrium = wall_edge_right - 16;
     // MAX difference = 500 degrees
     // 2**13 * 3
-    spring_constant = 50;
-    damper_constant = -10;
-    texture_constant = 17000;
-
+    spring_constant = 40;
+    damper_constant = 200;
+    texture_constant = 5100;
+    base_constant = 0x5000 >> 2;
 
     // oc_pwm(&oc1, OC_PIN_1, NULL, MOTOR_FREQ, 0xffff);
     // oc_pwm(&oc2, OC_PIN_2, NULL, MOTOR_FREQ, 0xffff);
-    FEEDBACK_FLAGS = WALL_FLAG | SPRING_FLAG | TEXTURE_FLAG;
+    FEEDBACK_FLAGS = WALL_FLAG | DAMPENER_FLAG | SPRING_FLAG | TEXTURE_FLAG;
     // led_write(&led2, true);
-    // led_write(&led3, true);
+    led_write(&led3, true);
     while (true) {
-        //positions = add_node(enc_half_degrees(), positions); // update position list
-        count++;
-        if (count%1000 == 0){
+        ServiceUSB();
+        positions[count] = enc_half_degrees();
+        position = positions[count];
+        velocity = positions[(count+1)] - position;
+        if (blinkCount == 0){
             led_toggle(&led3);
         }
-        iteration();
+        count = (count+1)%POS_LENGTH;
+        blinkCount = (blinkCount+1)%1000;
+        iteration(position, velocity);
     }
 }
