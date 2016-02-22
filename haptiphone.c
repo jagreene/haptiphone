@@ -108,7 +108,7 @@ void VendorRequests(void) {
     WORD32 address;
     WORD result;
     uint16_t half_degrees;
-    uint8_t sig;
+    uint8_t sig, insig;
 
     switch (USB_setup.bRequest) {
         case TOGGLE_LED1:
@@ -135,10 +135,11 @@ void VendorRequests(void) {
             break;
         case ENC_READ_ANG:
             half_degrees = enc_half_degrees();
-            half_degrees = half_degrees >> 8;
-            sig = (uint8_t)half_degrees;
+            sig = (uint8_t)(half_degrees >> 8);
+            insig = (uint8_t)(half_degrees & 0xff)
             BD[EP0IN].address[0] = sig;
-            BD[EP0IN].bytecount = 1;
+            BD[EP0IN].address[1] = insig;
+            BD[EP0IN].bytecount = 2;
             BD[EP0IN].status = 0xC8;         // send packet as DATA1, set UOWN bit            
             break;
         case TOGGLE_LED3:

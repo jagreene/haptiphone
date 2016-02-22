@@ -114,11 +114,11 @@ class haptiphone(Cmd):
 
     def read_ang(self, *args):
         try:
-            ret = self.dev.ctrl_transfer(0xC0, self.ENC_READ_ANG, 0, 0, 1)
+            ret = self.dev.ctrl_transfer(0xC0, self.ENC_READ_ANG, 0, 0, 2)
         except usb.core.USBError:
             print "Could not send ENC_ANGLE_AFTER_ZERO_POS_ADDER vendor request."
         else:
-            ret = int(ret[0] << 8)
+            ret = int(ret[0] << 8 + ret[1]) / 2
             return ret
             byte1, byte2 = ret
             return ((byte2 & 0x3f) << 8) + byte1
@@ -291,6 +291,10 @@ class haptiphone(Cmd):
 
         plt.plot(m1s, 'b')
         plt.show()
+
+    def measure_plot(self, *args):
+        for arg in args:
+            print(arg)
 
 if __name__ == '__main__':
     haptiphoneCLI = haptiphone()
